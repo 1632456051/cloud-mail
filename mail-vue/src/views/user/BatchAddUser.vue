@@ -78,7 +78,10 @@
 
       <div v-if="result" class="result" :class="result.fail ? 'result-warn' : 'result-ok'">
         成功 {{ result.success }} 个，失败 {{ result.fail }} 个
-        <div v-if="result.errors.length" class="errors">
+        <div v-if="result.emails && result.emails.length" class="errors">
+          <div class="err-row ok-row">已创建（最多显示 10 个）：{{ result.emails.slice(0, 10).join('、') }}</div>
+        </div>
+        <div v-if="result.errors && result.errors.length" class="errors">
           <div v-for="(e, i) in result.errors" :key="i" class="err-row">{{ e.email }}：{{ e.msg }}</div>
         </div>
       </div>
@@ -94,16 +97,19 @@
 </template>
 
 <script setup>
-import { reactive, ref } from 'vue'
+import { computed, reactive, ref, watch } from 'vue'
 import { Icon } from '@iconify/vue'
 import { userAdd } from '@/request/user.js'
 import { roleSelectUse } from '@/request/role.js'
 import { useSettingStore } from '@/store/setting.js'
+import { useUserStore } from '@/store/user.js'
 
 const emit = defineEmits(['refresh'])
 
 const settingStore = useSettingStore()
-const domainList = settingStore.domainList
+const userStore = useUserStore()
+// computed：域名列表是异步加载的，这样保证加载完成后下拉框一定能拿到值
+const domainList = computed(() => settingStore.domainList || [])
 const roleList = reactive([])
 roleSelectUse().then(list => {
   roleList.length = 0
@@ -115,7 +121,7 @@ const mode = ref('random')
 const count = ref(10)
 const prefix = ref('user')
 const manualText = ref('')
-const domain = ref(domainList[0])
+const domain = ref('')
 const roleType = ref(null)
 const pwdMode = ref('random')
 const pwdLen = ref(12)
@@ -128,6 +134,13 @@ const saveToDesktop = ref(false)
 const running = ref(false)
 const progress = ref(0)
 const result = ref(null)
+
+// 域名列表到位后自动选中第一个，避免用户忘记选域名
+watch(domainList, (list) => {
+  if (!domain.value && list && list.length) {
+    domain.value = list[0]
+  }
+}, { immediate: true, deep: true })
 
 function open() {
   show.value = true
@@ -181,8 +194,10 @@ function buildList() {
 
 function extractMsg(e) {
   try {
+    if (typeof e === 'string') return e
     if (e?.response?.data?.msg) return e.response.data.msg
     if (e?.response?.data?.message) return e.response.data.message
+    if (e?.msg) return e.msg
     if (e?.message) return e.message
   } catch (err) {
     // ignore
@@ -229,7 +244,7 @@ async function start() {
 
   running.value = true
   progress.value = 0
-  result.value = { success: 0, fail: 0, errors: [] }
+  result.value = { success: 0, fail: 0, errors: [], emails: [] }
   const created = []
 
   for (let i = 0; i < list.length; i++) {
@@ -237,6 +252,7 @@ async function start() {
     try {
       await userAdd({ email: item.email, password: item.password, type: roleType.value })
       result.value.success++
+      result.value.emails.push(item.email)
       created.push(item)
     } catch (e) {
       result.value.fail++
@@ -251,7 +267,10 @@ async function start() {
     downloadCsv(created)
   }
 
+  // 双保险刷新列表：既触发父组件的 @refresh，也驱动 userStore.refreshList（父组件里有 watch）
   emit('refresh')
+  userStore.refreshList++
+
   ElMessage({
     message: `批量添加完成：成功 ${result.value.success}，失败 ${result.value.fail}`,
     type: result.value.fail ? 'warning' : 'success',
@@ -337,5 +356,9 @@ function reset() {
   font-size: 12px;
   color: var(--el-color-danger);
   word-break: break-all;
+}
+
+.ok-row {
+  color: var(--el-color-success);
 }
 </style>

@@ -2,7 +2,7 @@
   <div class="user-box">
     <div class="header-actions">
       <Icon class="icon" icon="ion:add-outline" width="23" height="23" @click="openAdd"/>
-      <BatchAddUser @refresh="getUserList(false)"/>
+      <BatchAddUser @refresh="reloadAfterBatch"/>
       <div class="search">
         <el-input
             v-model="params.email"
@@ -1022,6 +1022,15 @@ function numChange(num) {
 function sizeChange(size) {
   params.size = size
   getUserList()
+}
+
+// 批量添加完成后刷新列表：先清掉可能把新用户挡住的筛选/分页/排序状态，再回到第 1 页
+function reloadAfterBatch() {
+  params.email = ''
+  params.status = -1
+  params.num = 1
+  params.timeSort = 0
+  getUserList(false)
 }
 
 function getUserList(loading = true) {
