@@ -509,11 +509,25 @@ roleSelectUse().then(list => {
 
 const paramsStar = localStorage.getItem('user-params')
 if (paramsStar) {
-  const localParams = JSON.parse(paramsStar)
-  params.num = localParams.num
-  params.size = localParams.size
-  params.timeSort = localParams.timeSort
-  params.status = localParams.status
+  try {
+    const localParams = JSON.parse(paramsStar) || {}
+    // 只接受合法值：旧缓存里残留的非法页码/状态会让列表永远查成空
+    if (Number.isInteger(localParams.num) && localParams.num >= 1) {
+      params.num = localParams.num
+    }
+    if (Number.isInteger(localParams.size) && localParams.size >= 1) {
+      params.size = localParams.size
+    }
+    if (localParams.timeSort === 0 || localParams.timeSort === 1) {
+      params.timeSort = localParams.timeSort
+    }
+    if ([-2, -1, 0, 1].includes(localParams.status)) {
+      params.status = localParams.status
+    }
+  } catch (e) {
+    // 缓存损坏就丢掉，用默认值
+    localStorage.removeItem('user-params')
+  }
 }
 
 watch(() => params, () => {
@@ -1043,6 +1057,14 @@ function getUserList(loading = true) {
     newParams.isDel = 1
   }
   userList(newParams).then(data => {
+    // 自愈：残留的页码/状态筛选导致查到空列表时，回到「第 1 页 + 全部」再查一次。
+    // 重置后条件不再成立，所以不会递归。
+    if ((!data.list || data.list.length === 0) && (params.num > 1 || params.status !== -1)) {
+      params.num = 1
+      params.status = -1
+      getUserList(loading)
+      return
+    }
     users.value = data.list.map(item => ({...item, checkedClass: ''}))
     total.value = data.total
     scrollbarRef.value?.setScrollTop(0);
