@@ -114,6 +114,10 @@ const userService = {
 		await accountService.physicsDeleteByUserIds(c, userIds);
 		await oauthService.deleteByUserIds(c, userIds);
 		await orm(c).delete(user).where(inArray(user.userId, userIds)).run();
+		// 必须清掉 KV 里的登录态：鉴权中间件(security.js)只校验 JWT + KV 的 auth-uid:<userId>，
+		// 不会回数据库确认用户是否还存在。只删库不删 KV 的话，被删除的用户凭旧 token
+		// 仍能继续访问（TOKEN_EXPIRE 长达 30 天）。
+		await Promise.all(userIds.map(id => c.env.kv?.delete(kvConst.AUTH_INFO + id)));
 	},
 
 	async list(c, params) {
